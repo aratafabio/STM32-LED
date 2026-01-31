@@ -379,6 +379,7 @@ void KnightRiderEffect(void const * argument)
       for (int i = 0; i < 8 && !manualBreathMode; i++)
       {
         osDelay(delayLed);
+        if(manualBreathMode) break;
         shiftOut(1 << i);
         // Controlla comandi durante animazione
       }
@@ -386,6 +387,7 @@ void KnightRiderEffect(void const * argument)
       for (int i = 7; i >= 0 && !manualBreathMode; i--)
       {
         osDelay(delayLed);
+        if(manualBreathMode) break;
         shiftOut(1 << i);
         // Controlla comandi durante animazione
       }
@@ -408,8 +410,8 @@ void breath(void const * argument)
       for (int i = 0; i < 8 && !manualColorMode; i++)
       {
         osDelay(delayLed);
+        if(manualColorMode) break;
         shiftOut((1 << (i + 1)) - 1);  // Accende LED da 0 a i
-        
       }
 
       // === SPEGNIMENTO: LED si spengono dall'ultimo al primo ===
@@ -417,8 +419,8 @@ void breath(void const * argument)
       for (int i = 7; i >= 0 && !manualColorMode; i--)
       {
         osDelay(delayLed);
+        if(manualColorMode) break;
         shiftOut((1 << i) - 1);  // Spegne LED da 7 fino a i
-        
       }
     }
     osDelay(50);
