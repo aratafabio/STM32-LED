@@ -120,8 +120,10 @@ volatile uint8_t rxByte;           // Byte ricevuto
 volatile uint8_t rxBuffer[32];     // Buffer comando
 volatile uint8_t rxIndex = 0;      // Indice nel buffer
 volatile uint8_t cmdReady = 0;     // Flag: comando pronto
-volatile uint8_t manualColorMode = 0; // 1 = colore manuale, 0 = ciclo automatico
+volatile uint8_t manualColorMode = 1; // 1 = colore manuale, 0 = ciclo automatico
 volatile uint8_t manualBreathMode = 0; // 1 = breath mode, 0 = no breath
+
+osMutexId shiftMutex; 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -369,23 +371,23 @@ void KnightRiderEffect(void const * argument)
   for(;;)
   {
     // === CHENILLARD (Knight Rider) - solo in modalita' auto ===
-    if (!manualColorMode && !manualBreathMode)
+    if (manualColorMode)
     {
+      shiftOut(0x00);
+      
       // Andata: LED 0 -> 7
-      for (int i = 0; i < 8 && !manualColorMode; i++)
+      for (int i = 0; i < 8 && !manualBreathMode; i++)
       {
-        shiftOut(1 << i);
         osDelay(delayLed);
+        shiftOut(1 << i);
         // Controlla comandi durante animazione
-        if (cmdReady) break;
       }
       // Ritorno: LED 6 -> 0
-      for (int i = 7; i >= 0 && !manualColorMode; i--)
+      for (int i = 7; i >= 0 && !manualBreathMode; i--)
       {
-        shiftOut(1 << i);
         osDelay(delayLed);
+        shiftOut(1 << i);
         // Controlla comandi durante animazione
-        if (cmdReady) break;
       }
     }
     osDelay(50);
@@ -400,20 +402,23 @@ void breath(void const * argument)
   {
     if(manualBreathMode)
     {
+      shiftOut(0x00);
       // === ACCENSIONE: LED si accendono uno dopo l'altro ===
       // 0b00000001 -> 0b00000011 -> 0b00000111 -> ... -> 0b11111111
-      for (int i = 0; i < 8; i++)
+      for (int i = 0; i < 8 && !manualColorMode; i++)
       {
-        shiftOut((1 << (i + 1)) - 1);  // Accende LED da 0 a i
         osDelay(delayLed);
+        shiftOut((1 << (i + 1)) - 1);  // Accende LED da 0 a i
+        
       }
 
       // === SPEGNIMENTO: LED si spengono dall'ultimo al primo ===
       // 0b11111111 -> 0b01111111 -> 0b00111111 -> ... -> 0b00000000
-      for (int i = 7; i >= 0; i--)
+      for (int i = 7; i >= 0 && !manualColorMode; i--)
       {
-        shiftOut((1 << i) - 1);  // Spegne LED da 7 fino a i
         osDelay(delayLed);
+        shiftOut((1 << i) - 1);  // Spegne LED da 7 fino a i
+        
       }
     }
     osDelay(50);
@@ -423,6 +428,7 @@ void breath(void const * argument)
 // Invia un byte al 74HC595 (bit-banging)
 void shiftOut(uint8_t data)
 {
+  osMutexWait(shiftMutex, osWaitForever);
   // Assicura che CLOCK e LATCH siano LOW all'inizio
   HAL_GPIO_WritePin(SHIFT_CLOCK_Port, SHIFT_CLOCK_Pin, GPIO_PIN_RESET);
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_RESET);
@@ -450,6 +456,7 @@ void shiftOut(uint8_t data)
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_SET);
   delay_us(1);
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_RESET);
+  osMutexRelease(shiftMutex);
 }
 
 /* USER CODE END 0 */
@@ -537,9 +544,11 @@ int main(void)
   osThreadDef(breathTask, breath, osPriorityNormal, 0, 512);
   breathTaskHandle = osThreadCreate(osThread(breathTask), NULL);
 
- osThreadDef(knightRiderTask, KnightRiderEffect, osPriorityNormal, 0, 512);
+  osThreadDef(knightRiderTask, KnightRiderEffect, osPriorityNormal, 0, 512);
   knightRiderTaskHandle = osThreadCreate(osThread(knightRiderTask), NULL);
   
+  osMutexDef(shiftMutex);                                                                                                                                                                                                                     
+  shiftMutex = osMutexCreate(osMutex(shiftMutex)); 
   
   /* USER CODE END RTOS_THREADS */
 
@@ -1191,9 +1200,6 @@ void StartDefaultTask(void const * argument)
 
   // Inizializza: tutte le LED spente
   shiftOut(0x00);
-  manualColorMode = 0;  // 0 = chenillard auto, 1 = pattern manuale
-  manualBreathMode = 0; // 0 = no breath, 1 = breath mode
-
   for(;;)
   {
     // === CONTROLLO COMANDI UART ===
@@ -1209,7 +1215,7 @@ void StartDefaultTask(void const * argument)
       }
       else if (rxBuffer[0] == 'A' || rxBuffer[0] == 'a')
       {
-        manualColorMode = 0;
+        manualColorMode = 1;
         manualBreathMode = 0;
         printf("Chenillard AUTO\r\n");
       }
