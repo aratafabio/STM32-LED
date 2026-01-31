@@ -1,0 +1,137 @@
+# STM32 Project .gitignore
+
+#############
+# Build files
+#############
+*.o
+*.obj
+*.elf
+*.bin
+*.hex
+*.map
+*.lst
+*.lss
+*.sym
+*.d
+*.su
+*.axf
+
+# Build directories
+build/
+Build/
+Debug/
+Release/
+obj/
+Obj/
+
+#############
+# STM32CubeMX
+#############
+*.ioc~
+Drivers/CMSIS/
+Drivers/STM32*HAL_Driver/
+
+# Keep only the .ioc file, ignore generated code structure
+# Uncomment if you regenerate code from .ioc frequently:
+# Core/Inc/
+# Core/Src/
+# Drivers/
+
+#############
+# IDE specific
+#############
+
+# STM32CubeIDE / Eclipse
+.cproject
+.project
+.settings/
+*.launch
+.metadata/
+
+# Keil MDK-ARM
+*.uvguix.*
+*.uvopt
+*.bak
+*.dep
+*.crf
+*.htm
+JLinkLog.txt
+JLinkSettings.ini
+
+# IAR EWARM
+*.ewt
+*.dep
+*.wsdt
+*.ewd
+*.dni
+*.wspos
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+CMakeLists.txt.user
+
+#############
+# Debuggers
+#############
+*.jlink
+*.gdb
+*.launch
+
+# OpenOCD
+openocd.log
+
+# ST-Link
+STM32Programmer.log
+
+#############
+# OS specific
+#############
+
+# Linux
+*~
+.directory
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+#############
+# Toolchain
+#############
+
+# ARM GCC
+*.a
+*.lib
+
+# Make
+*.mk
+
+#############
+# Documentation
+#############
+html/
+latex/
+Doxygen/
+
+#############
+# Other
+#############
+*.log
+*.swp
+*.swo
+*~
+.tags
+tags
+TAGS
