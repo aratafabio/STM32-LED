@@ -150,6 +150,7 @@ void BuzzerTask(void const * argument);
 void shiftOut(uint8_t data);
 void breath(void const * argument);
 void KnightRiderEffect(void const * argument);
+void SPI_LoopbackTest(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -459,6 +460,74 @@ void shiftOut(uint8_t data)
   delay_us(1);
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_RESET);
   osMutexRelease(shiftMutex);
+}
+
+// Test SPI loopback: collega PF9 (MOSI) a PF8 (MISO) con un jumper
+void SPI_LoopbackTest(void)
+{
+  printf("\r\n=== SPI Loopback Test ===\r\n");
+  printf("SPI5: MOSI=PF9, MISO=PF8, SCK=PF7\r\n");
+
+  // Disabilita chip select del giroscopio L3GD20 (CS = HIGH = deselezionato)
+  HAL_GPIO_WritePin(NCS_MEMS_SPI_GPIO_Port, NCS_MEMS_SPI_Pin, GPIO_PIN_SET);
+
+  uint8_t testBytes[] = {0xAA, 0x55, 0xFF, 0x00};
+  uint8_t txBuf, rxBuf;
+  uint8_t passed = 1;
+  HAL_StatusTypeDef status;
+
+  // Test singoli byte
+  for (int i = 0; i < 4; i++)
+  {
+    txBuf = testBytes[i];
+    rxBuf = 0;
+    status = HAL_SPI_TransmitReceive(&hspi5, &txBuf, &rxBuf, 1, 100);
+
+    if (status != HAL_OK)
+    {
+      printf("TX: 0x%02X -> SPI ERROR (HAL status %d)\r\n", txBuf, status);
+      passed = 0;
+    }
+    else
+    {
+      uint8_t ok = (txBuf == rxBuf);
+      printf("TX: 0x%02X -> RX: 0x%02X [%s]\r\n", txBuf, rxBuf, ok ? "OK" : "FAIL");
+      if (!ok) passed = 0;
+    }
+  }
+
+  // Test sequenza multi-byte
+  uint8_t txSeq[8] = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  uint8_t rxSeq[8] = {0};
+
+  status = HAL_SPI_TransmitReceive(&hspi5, txSeq, rxSeq, 8, 100);
+
+  if (status != HAL_OK)
+  {
+    printf("TX: {seq} -> SPI ERROR (HAL status %d)\r\n", status);
+    passed = 0;
+  }
+  else
+  {
+    printf("TX: {%02X %02X %02X %02X %02X %02X %02X %02X} -> RX: {%02X %02X %02X %02X %02X %02X %02X %02X} [",
+           txSeq[0], txSeq[1], txSeq[2], txSeq[3], txSeq[4], txSeq[5], txSeq[6], txSeq[7],
+           rxSeq[0], rxSeq[1], rxSeq[2], rxSeq[3], rxSeq[4], rxSeq[5], rxSeq[6], rxSeq[7]);
+
+    if (memcmp(txSeq, rxSeq, 8) == 0)
+    {
+      printf("OK]\r\n");
+    }
+    else
+    {
+      printf("FAIL]\r\n");
+      passed = 0;
+    }
+  }
+
+  if (passed)
+    printf("Test PASSED: SPI communication works!\r\n");
+  else
+    printf("Test FAILED: check jumper PF9 -> PF8\r\n");
 }
 
 /* USER CODE END 0 */
@@ -1245,6 +1314,10 @@ void StartDefaultTask(void const * argument)
         manualBreathMode = 1;
         manualColorMode = 0;  // Disattiva pattern manuale
         printf("Breath mode ON\r\n");
+      }
+      else if (rxBuffer[0] == 'S' || rxBuffer[0] == 's')
+      {
+        SPI_LoopbackTest();
       }
       else if (rxBuffer[0] >= '0' && rxBuffer[0] <= '9')
       {
