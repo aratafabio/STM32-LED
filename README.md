@@ -1,60 +1,106 @@
 # STM32 LED Controller
 
-Progetto STM32 per il controllo di LED con effetti animati, LED RGB e buzzer musicale.
+STM32 project for controlling LEDs with animated effects, RGB LED and musical buzzer.
 
 ## Hardware
 
 - **MCU:** STM32F4 (Discovery Board)
-- **8 LED** controllati via shift register 74HC595
-- **LED RGB** con PWM software
-- **Buzzer** passivo per melodie
-- **UART** per controllo da terminale (115200 baud)
+- **8 LEDs** driven via 74HC595 shift register
+- **RGB LED** with software PWM
+- **Passive buzzer** for melodies
+- **UART** for terminal control (115200 baud)
 
-### Connessioni 74HC595
+### Passive Buzzer
 
-| Pin 74HC595 | Funzione | Pin STM32 |
-|-------------|----------|-----------|
-| DS (14)     | Data     | PE9       |
-| SHCP (11)   | Clock    | PE11      |
-| STCP (12)   | Latch    | PE13      |
+| Buzzer    | Connection |
+|-----------|------------|
+| + (long)  | PE3        |
+| - (short) | GND        |
 
-## Funzionalità
+### Full Wiring: 74HC595 + 8 LEDs
 
-### Effetti LED
+```
+                    74HC595
+                 ┌────┴────┐
+         LED 1 ──┤ 1  Q1   VCC 16 ├── 3.3V
+         LED 2 ──┤ 2  Q2   Q0  15 ├── LED 0
+         LED 3 ──┤ 3  Q3   DS  14 ├── PE9  (STM32 Data)
+         LED 4 ──┤ 4  Q4   OE  13 ├── GND
+         LED 5 ──┤ 5  Q5   ST  12 ├── PE13 (STM32 Latch)
+         LED 6 ──┤ 6  Q6   SH  11 ├── PE11 (STM32 Clock)
+         LED 7 ──┤ 7  Q7   MR  10 ├── 3.3V
+           GND ──┤ 8  GND  Q7'  9 ├── NC
+                 └─────────────────┘
+```
 
-| Effetto | Descrizione |
-|---------|-------------|
-| **Knight Rider** | Chenillard stile supercar (default) |
-| **Breath** | LED si accendono/spengono progressivamente |
-| **Pattern manuali** | 10 pattern predefiniti (0-9) |
+#### Control Signals (STM32 -> 74HC595)
 
-### Melodie Buzzer
+| 74HC595 Pin | Function           | STM32 Pin |
+|-------------|--------------------|-----------|
+| DS (14)     | Serial Data        | PE9       |
+| SHCP (11)   | Shift Clock        | PE11      |
+| STCP (12)   | Storage Clock      | PE13      |
+
+#### Power and Configuration
+
+| 74HC595 Pin | Function           | Connection |
+|-------------|--------------------|------------|
+| VCC (16)    | Power Supply       | 3.3V       |
+| GND (8)     | Ground             | GND        |
+| MR (10)     | Master Reset       | 3.3V (always active) |
+| OE (13)     | Output Enable      | GND (outputs always enabled) |
+| Q7' (9)     | Serial Out         | NC (not connected) |
+
+#### LED Outputs
+
+| 74HC595 Pin | Output | Connection              |
+|-------------|--------|-------------------------|
+| 15          | Q0     | 220R Resistor -> LED 0 -> GND |
+| 1           | Q1     | 220R Resistor -> LED 1 -> GND |
+| 2           | Q2     | 220R Resistor -> LED 2 -> GND |
+| 3           | Q3     | 220R Resistor -> LED 3 -> GND |
+| 4           | Q4     | 220R Resistor -> LED 4 -> GND |
+| 5           | Q5     | 220R Resistor -> LED 5 -> GND |
+| 6           | Q6     | 220R Resistor -> LED 6 -> GND |
+| 7           | Q7     | 220R Resistor -> LED 7 -> GND |
+
+## Features
+
+### LED Effects
+
+| Effect | Description |
+|--------|-------------|
+| **Knight Rider** | Supercar-style chaser (default) |
+| **Breath** | LEDs progressively turn on/off |
+| **Manual Patterns** | 10 predefined patterns (0-9) |
+
+### Buzzer Melodies
 
 - Imperial March (Star Wars)
 - It's a Long Way to the Top (AC/DC)
-- Toccata e Fuga in Re minore (J.S. Bach)
+- Toccata and Fugue in D minor (J.S. Bach)
 
-Premere il pulsante B1 o inviare `P` via UART per suonare.
+Press button B1 or send `P` via UART to play.
 
-## Comandi UART
+## UART Commands
 
-| Comando | Azione |
+| Command | Action |
 |---------|--------|
-| `A` | Modalità automatica (Knight Rider) |
-| `B` | Modalità Breath |
-| `0-9` | Pattern manuale |
-| `P` | Suona melodia |
-| `+` | Rallenta animazione |
-| `-` | Accelera animazione |
+| `A` | Automatic mode (Knight Rider) |
+| `B` | Breath mode |
+| `0-9` | Manual pattern |
+| `P` | Play melody |
+| `+` | Slow down animation |
+| `-` | Speed up animation |
 
-## Architettura Software
+## Software Architecture
 
-Il progetto usa **FreeRTOS** con i seguenti task:
+The project uses **FreeRTOS** with the following tasks:
 
 ```
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │  DefaultTask    │  │  KnightRider    │  │  BreathTask     │
-│  (UART + cmd)   │  │  (animazione)   │  │  (animazione)   │
+│  (UART + cmd)   │  │  (animation)    │  │  (animation)    │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
          │                   │                    │
          └───────────────────┴────────────────────┘
@@ -65,30 +111,30 @@ Il progetto usa **FreeRTOS** con i seguenti task:
                     └─────────────────┘
 
 ┌─────────────────┐
-│   BuzzerTask    │ ◄── Interrupt B1 / Comando 'P'
-│   (melodie)     │
+│   BuzzerTask    │ ◄── B1 Interrupt / 'P' Command
+│   (melodies)    │
 └─────────────────┘
 ```
 
 ## Build
 
-Progetto generato con **STM32CubeMX**. Compilare con:
+Project generated with **STM32CubeMX**. Build with:
 
 - STM32CubeIDE
 - Makefile + arm-none-eabi-gcc
 - PlatformIO
 
-## Struttura File
+## File Structure
 
 ```
 ├── Core/
 │   ├── Inc/          # Header files
 │   └── Src/
-│       └── main.c    # Logica principale
-├── Drivers/          # HAL STM32
+│       └── main.c    # Main logic
+├── Drivers/          # STM32 HAL
 └── Middlewares/      # FreeRTOS, USB
 ```
 
-## Licenza
+## License
 
-Codice personale per scopi didattici.
+Personal code for educational purposes.
