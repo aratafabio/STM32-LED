@@ -82,6 +82,19 @@ STM32 project for controlling LEDs with animated effects, RGB LED and musical bu
 
 Press button B1 or send `P` via UART to play.
 
+### SPI Loopback Test
+
+Uses SPI5 (already configured for the onboard L3GD20 gyroscope) to verify SPI communication with a simple loopback.
+
+```
+PF9 (MOSI) ───jumper wire──── PF8 (MISO)
+
+SCK = PF7 (internal, no wiring needed)
+CS  = PC1 (disabled during test to avoid gyroscope interference)
+```
+
+Send `S` via UART to run the test. It transmits several byte patterns and checks that RX matches TX.
+
 ## UART Commands
 
 | Command | Action |
@@ -90,6 +103,7 @@ Press button B1 or send `P` via UART to play.
 | `B` | Breath mode |
 | `0-9` | Manual pattern |
 | `P` | Play melody |
+| `S` | SPI loopback test |
 | `+` | Slow down animation |
 | `-` | Speed up animation |
 
