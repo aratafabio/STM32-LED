@@ -120,8 +120,9 @@ volatile uint8_t rxByte;           // Byte ricevuto
 volatile uint8_t rxBuffer[32];     // Buffer comando
 volatile uint8_t rxIndex = 0;      // Indice nel buffer
 volatile uint8_t cmdReady = 0;     // Flag: comando pronto
-volatile uint8_t manualColorMode = 1; // 1 = colore manuale, 0 = ciclo automatico
+volatile uint8_t manualColorMode = 1; // 1 = chenillard, 0 = no chenillard
 volatile uint8_t manualBreathMode = 0; // 1 = breath mode, 0 = no breath
+volatile uint8_t manualPatternMode = 0; // 1 = pattern fixe, animations bloquees
 
 osMutexId shiftMutex; 
 /* USER CODE END PV */
@@ -372,7 +373,7 @@ void KnightRiderEffect(void const * argument)
   for(;;)
   {
     // === CHENILLARD (Knight Rider) - solo in modalita' auto ===
-    if (manualColorMode)
+    if (manualColorMode && !manualPatternMode)
     {
       shiftOut(0x00);
       
@@ -403,7 +404,7 @@ void breath(void const * argument)
   printf("BreathTask avviato!\r\n");
   for(;;)
   {
-    if(manualBreathMode)
+    if(manualBreathMode && !manualPatternMode)
     {
       shiftOut(0x00);
       // === ACCENSIONE: LED si accendono uno dopo l'altro ===
@@ -446,18 +447,18 @@ void shiftOut(uint8_t data)
       HAL_GPIO_WritePin(SHIFT_DATA_Port, SHIFT_DATA_Pin, GPIO_PIN_RESET);
 
     // Piccolo delay per stabilizzare DATA
-    delay_us(1);
+    delay_us(50);
 
     // Impulso di clock: LOW -> HIGH (dato entra) -> LOW
     HAL_GPIO_WritePin(SHIFT_CLOCK_Port, SHIFT_CLOCK_Pin, GPIO_PIN_SET);
-    delay_us(1);
+    delay_us(50);
     HAL_GPIO_WritePin(SHIFT_CLOCK_Port, SHIFT_CLOCK_Pin, GPIO_PIN_RESET);
   }
 
   // Impulso di latch per trasferire alle uscite
-  delay_us(1);
+  delay_us(50);
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_SET);
-  delay_us(1);
+  delay_us(50);
   HAL_GPIO_WritePin(SHIFT_LATCH_Port, SHIFT_LATCH_Pin, GPIO_PIN_RESET);
   osMutexRelease(shiftMutex);
 }
@@ -582,7 +583,7 @@ int main(void)
   // Avvia ricezione UART con interrupt (1 byte alla volta)
   HAL_UART_Receive_IT(&huart1, (uint8_t*)&rxByte, 1);
 
-  printf("Comandi: R G B W O (colore), A (auto), P (play)\r\n");
+  printf("Send H for help\r\n");
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -1288,6 +1289,7 @@ void StartDefaultTask(void const * argument)
       {
         manualColorMode = 1;
         manualBreathMode = 0;
+        manualPatternMode = 0;
         printf("Chenillard AUTO\r\n");
       }
       else if(rxBuffer[0] == '+')
@@ -1312,12 +1314,25 @@ void StartDefaultTask(void const * argument)
       else if(rxBuffer[0] == 'B' || rxBuffer[0] == 'b')
       {
         manualBreathMode = 1;
-        manualColorMode = 0;  // Disattiva pattern manuale
+        manualColorMode = 0;
+        manualPatternMode = 0;
         printf("Breath mode ON\r\n");
       }
       else if (rxBuffer[0] == 'S' || rxBuffer[0] == 's')
       {
         SPI_LoopbackTest();
+      }
+      else if (rxBuffer[0] == 'H' || rxBuffer[0] == 'h')
+      {
+        printf("\r\n=== Commands ===\r\n");
+        printf("H  - Help (this menu)\r\n");
+        printf("A  - Chenillard (Knight Rider)\r\n");
+        printf("B  - Breath mode\r\n");
+        printf("0-9- LED pattern (manual)\r\n");
+        printf("P  - Play melody\r\n");
+        printf("S  - SPI loopback test\r\n");
+        printf("+  - Slow down animation\r\n");
+        printf("-  - Speed up animation\r\n");
       }
       else if (rxBuffer[0] >= '0' && rxBuffer[0] <= '9')
       {
@@ -1335,8 +1350,9 @@ void StartDefaultTask(void const * argument)
           0xC3   // 9: estremi larghi
         };
         uint8_t pattern = patterns[rxBuffer[0] - '0'];
-        manualColorMode = 1;  // Blocca chenillard
-        manualBreathMode = 0; // Disattiva breath
+        manualPatternMode = 1; // Blocca animations
+        manualColorMode = 0;
+        manualBreathMode = 0;
         printf("Pattern %c: 0x%02X (manuale)\r\n", rxBuffer[0], pattern);
         shiftOut(pattern);
       }
