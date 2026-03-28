@@ -106,6 +106,8 @@ volatile uint8_t duty_green = 0;
 volatile uint8_t duty_blue = 0;
 // Flag per suonare melodia (settato da interrupt)
 volatile uint8_t playMelodyFlag = 0;
+// Flag per fermare la melodia corrente
+volatile uint8_t stopMelody = 0;
 // Contatore per alternare melodie (0 = Imperial March, 1 = AC/DC)
 volatile uint8_t melodySelector = 0;
 
@@ -123,8 +125,9 @@ volatile uint8_t cmdReady = 0;     // Flag: comando pronto
 volatile uint8_t manualColorMode = 1; // 1 = chenillard, 0 = no chenillard
 volatile uint8_t manualBreathMode = 0; // 1 = breath mode, 0 = no breath
 volatile uint8_t manualPatternMode = 0; // 1 = pattern fixe, animations bloquees
+volatile uint8_t musicPlaying = 0;     // 1 = melodia in corso, blocca animazioni
 
-osMutexId shiftMutex; 
+osMutexId shiftMutex;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -172,9 +175,25 @@ void delay_us(uint32_t us)
   while ((DWT->CYCCNT - startTick) < delayTicks);
 }
 
+// Mappa frequenza nota a pattern LED bar-graph (note alte = piu' LED accesi)
+static uint8_t freq_to_led_pattern(uint16_t frequency)
+{
+  if (frequency == 0)        return 0x00;  // Pausa: tutto spento
+  if (frequency < 220)       return 0x01;  // Do/Re basso:  1 LED
+  if (frequency < 262)       return 0x03;  // Mi/Fa basso:  2 LED
+  if (frequency < 294)       return 0x07;  // Sol basso:    3 LED
+  if (frequency < 349)       return 0x0F;  // Do/Re:        4 LED
+  if (frequency < 392)       return 0x1F;  // Mi/Fa:        5 LED
+  if (frequency < 440)       return 0x3F;  // Sol:          6 LED
+  if (frequency < 523)       return 0x7F;  // La/Si:        7 LED
+  return 0xFF;                             // Do alto e su: 8 LED
+}
+
 // Suona una nota alla frequenza specificata per la durata indicata
 void playTone(uint16_t frequency, uint16_t duration_ms)
 {
+  shiftOut(freq_to_led_pattern(frequency));
+
   if (frequency == 0) {
     // Pausa: nessun suono
     osDelay(duration_ms);
@@ -228,7 +247,7 @@ void playImperialMarch(void)
 
   int numNote = sizeof(note) / sizeof(note[0]);
   for (int i = 0; i < numNote; i++) {
-    if (playMelodyFlag) return;  // Interrompi se pulsante premuto
+    if (playMelodyFlag || stopMelody) return;
     playTone(note[i], durate[i]);
     osDelay(50);
   }
@@ -288,7 +307,7 @@ void playLongWayToTheTop(void)
 
   int numNote = sizeof(note) / sizeof(note[0]);
   for (int i = 0; i < numNote; i++) {
-    if (playMelodyFlag) return;  // Interrompi se pulsante premuto
+    if (playMelodyFlag || stopMelody) return;
     playTone(note[i], durate[i]);
     osDelay(30);  // pausa corta per ritmo rock
   }
@@ -360,7 +379,7 @@ void playBachToccata(void)
 
   int numNote = sizeof(note) / sizeof(note[0]);
   for (int i = 0; i < numNote; i++) {
-    if (playMelodyFlag) return;  // Interrompi se pulsante premuto
+    if (playMelodyFlag || stopMelody) return;
     playTone(note[i], durate[i]);
     osDelay(20);
   }
@@ -373,25 +392,21 @@ void KnightRiderEffect(void const * argument)
   for(;;)
   {
     // === CHENILLARD (Knight Rider) - solo in modalita' auto ===
-    if (manualColorMode && !manualPatternMode)
+    if (manualColorMode && !manualPatternMode && !musicPlaying)
     {
       shiftOut(0x00);
       
       // Andata: LED 0 -> 7
-      for (int i = 0; i < 8 && !manualBreathMode; i++)
+      for (int i = 0; i < 8 && !manualBreathMode && !musicPlaying; i++)
       {
         osDelay(delayLed);
-        if(manualBreathMode) break;
         shiftOut(1 << i);
-        // Controlla comandi durante animazione
       }
       // Ritorno: LED 6 -> 0
-      for (int i = 7; i >= 0 && !manualBreathMode; i--)
+      for (int i = 7; i >= 0 && !manualBreathMode && !musicPlaying; i--)
       {
         osDelay(delayLed);
-        if(manualBreathMode) break;
         shiftOut(1 << i);
-        // Controlla comandi durante animazione
       }
     }
     osDelay(50);
@@ -404,24 +419,22 @@ void breath(void const * argument)
   printf("BreathTask avviato!\r\n");
   for(;;)
   {
-    if(manualBreathMode && !manualPatternMode)
+    if(manualBreathMode && !manualPatternMode && !musicPlaying)
     {
       shiftOut(0x00);
       // === ACCENSIONE: LED si accendono uno dopo l'altro ===
       // 0b00000001 -> 0b00000011 -> 0b00000111 -> ... -> 0b11111111
-      for (int i = 0; i < 8 && !manualColorMode; i++)
+      for (int i = 0; i < 8 && !manualColorMode && !musicPlaying; i++)
       {
         osDelay(delayLed);
-        if(manualColorMode) break;
         shiftOut((1 << (i + 1)) - 1);  // Accende LED da 0 a i
       }
 
       // === SPEGNIMENTO: LED si spengono dall'ultimo al primo ===
       // 0b11111111 -> 0b01111111 -> 0b00111111 -> ... -> 0b00000000
-      for (int i = 7; i >= 0 && !manualColorMode; i--)
+      for (int i = 7; i >= 0 && !manualColorMode && !musicPlaying; i--)
       {
         osDelay(delayLed);
-        if(manualColorMode) break;
         shiftOut((1 << i) - 1);  // Spegne LED da 7 fino a i
       }
     }
@@ -1224,6 +1237,7 @@ void BuzzerTask(void const * argument)
     {
       playMelodyFlag = 0;  // Reset flag
 
+      musicPlaying = 1;
       switch (melodySelector)
       {
         case 0:
@@ -1244,9 +1258,13 @@ void BuzzerTask(void const * argument)
           printf("Barocco puro!\r\n");
           break;
       }
+      musicPlaying = 0;
+      shiftOut(0x00);  // LED spenti al termine della melodia
 
-      // Alterna per la prossima volta (3 melodie)
-      melodySelector = (melodySelector + 1) % 3;
+      // Alterna per la prossima volta solo se non fermato manualmente
+      if (!stopMelody)
+        melodySelector = (melodySelector + 1) % 3;
+      stopMelody = 0;
     }
 
     osDelay(50);  // Controlla ogni 50ms
@@ -1284,6 +1302,11 @@ void StartDefaultTask(void const * argument)
       {
         playMelodyFlag = 1;
         printf("PLAY melodia!\r\n");
+      }
+      else if (rxBuffer[0] == 'Q' || rxBuffer[0] == 'q')
+      {
+        stopMelody = 1;
+        printf("Stop melodia\r\n");
       }
       else if (rxBuffer[0] == 'A' || rxBuffer[0] == 'a')
       {
@@ -1330,6 +1353,7 @@ void StartDefaultTask(void const * argument)
         printf("B  - Breath mode\r\n");
         printf("0-9- LED pattern (manual)\r\n");
         printf("P  - Play melody\r\n");
+        printf("Q  - Stop melody\r\n");
         printf("S  - SPI loopback test\r\n");
         printf("+  - Slow down animation\r\n");
         printf("-  - Speed up animation\r\n");
